@@ -1,0 +1,179 @@
+<script setup>
+import { Money } from "@element-plus/icons-vue";
+import { findbill } from "@/api/bill-manage";
+import { formatTime } from "@/utils/FormatTime";
+import { paybill, filterbill } from "@/api/bill-manage";
+import { useUser } from "@/stores/user.js";
+import pageInfo from "@/components/PageiNation.vue";
+const DataValue = ref();
+const tableData = ref([]);
+const User = useUser();
+const count = ref();
+const Pagefun = ref();
+const search=ref()
+// 筛选日期
+const handlechange = async (val) => {
+  //搜索时候页码归默认
+  Pagefun.value.clearPageInfo();
+  search.value = val; //搜索信息保留 给分页
+  const res = await filterbill({ billdata: val, radio: 2,...User.UserInfo });
+  tableData.value = res.data
+  count.value = res.total;
+  formatterTableDate();
+};
+// 合计费用
+const SumFree = (row) => {
+  return row.publiclift*0.5 + row.publicwater*2.8 + row.publicelectric*0.5+row.propertyfees;
+};
+// 筛选缴纳状态
+const filterTag = async (value, row) => {
+  return row.state === value;
+};
+// 去缴费
+const pay = (row) => {
+  ElMessageBox.confirm("确定缴纳物业费?", "提醒", {
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+    type: "warning",
+  })
+    .then(async () => {
+      console.log(row);
+      const cost = SumFree(row);
+      const res = await paybill({ _id: row._id, cost, name: "智慧社区物业" });
+      console.log(res.data);
+      window.location = res.result;
+    })
+    .catch(() => {
+      ElMessage({
+        type: "info",
+        message: "取消",
+      });
+    });
+};
+// 账单列表
+const getBill = async () => {
+  // 这里 进行筛选如果是管理员查询返回所有住户账单 住户传住户号只返回该住户账单
+  const res = await findbill({ ...User.UserInfo, radio: 2 });
+  console.log(res)
+  tableData.value = res.data
+  count.value = res.total;
+  formatterTableDate();
+};
+// 矫正格式
+const formatterTableDate = () => {
+  tableData.value.forEach(
+    (item) =>
+      (item.address = `${item.address[0]}号${item.address[1]}单元${item.address[2]}室`)
+  );
+};
+// 住户矫正
+const getaddress = (address) => {
+  return (address = `${address[0]}号${address[1]}单元${address[2]}室`);
+};
+const handlepage = async (data) => {
+  const res = await findbill({
+    ...User.UserInfo,
+    ...data,
+    radio: 2,
+    billdata: search.value,
+  });
+  tableData.value = res.data
+  count.value = res.total;
+  formatterTableDate();
+};
+const getTime = (time) => {
+  return formatTime(time);
+};
+onMounted(() => {
+  getBill();
+});
+</script>
+<template>
+<div class="main" >
+  <h1 v-if="User.UserInfo.role === 1">住户号:{{getaddress(User.UserInfo.address)}}</h1>
+  <br />
+  <div class="datemonth">
+    <el-date-picker
+      v-model="DataValue"
+      @change="handlechange"
+      type="monthrange"
+      range-separator="至"
+      start-placeholder="开始月份"
+      end-placeholder="结束月份"
+      placeholder="请输入你要查询的日期"
+      format="YYYY-MM"
+      value-format="YYYY-MM"
+    />
+  </div>
+  <el-table :data="tableData" style="width: 100% height= '600'">
+    <el-table-column fixed prop="date" label="账单月份">
+      <template #default="scope">
+        {{ getTime(scope.row.billdata) }}
+      </template>
+    </el-table-column>
+    <el-table-column
+      v-if="User.UserInfo.role === 0"
+      prop="address"
+      label="住户号"
+    >
+    </el-table-column>
+    <el-table-column prop="publiclift" label="电梯电费分摊(0.5元/度)">
+      <template #default="scope">
+        {{ scope.row.publiclift.toFixed(2) }}度
+      </template>
+    </el-table-column>
+    <el-table-column prop="publicwater" label="公共水费分摊(2.8元/吨)">
+      <template #default="scope">
+        {{ scope.row.publicwater.toFixed(2) }}吨
+      </template>
+    </el-table-column>
+   <el-table-column prop="publicelectric" label="公共电费分摊(0.5/度)">
+      <template #default="scope">
+        {{ scope.row.publicelectric??0}}度
+      </template>
+    </el-table-column>
+    <el-table-column prop="propertyfees" label="物业费">
+      <template #default="scope">
+        {{ scope.row.publicwater.toFixed(2) }}元
+      </template>
+    </el-table-column>
+    <el-table-column
+      prop="state"
+      label="是否已缴纳"
+      :filters="[
+        { text: '已缴纳', value: '1' },
+        { text: '未缴纳', value: '0' },
+      ]"
+      :filter-method="filterTag"
+    >
+      <template #default="scope">
+        <el-tag :type="scope.row.state === '1' ? '' : 'success'">{{
+          scope.row.state === "1" ? "已缴纳" : "未缴纳"
+        }}</el-tag>
+      </template>
+    </el-table-column>
+    <el-table-column prop="address" label="合计费用">
+      <template #default="scope">
+        {{ SumFree(scope.row).toFixed(2) }}元
+      </template>
+    </el-table-column>
+    <el-table-column prop="address" label="操作">
+      <template #default="scope">
+        <el-button
+          type="primary"
+          :icon="Money"
+          @click="pay(scope.row)"
+          circle
+        />
+      </template>
+    </el-table-column>
+  </el-table>
+  <pageInfo @pagequery="handlepage" ref="Pagefun" :count="count" />
+    </div>
+</template>
+
+<style lang='scss' scoped>
+.main{
+  width: 80%;
+}
+</style>
