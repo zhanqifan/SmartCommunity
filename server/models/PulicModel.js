@@ -10,3 +10,4 @@ const PublicType =new mongoose.Schema({
 let PublicModel = mongoose.model('Public',PublicType)
 
 module.exports=PublicModel
+
